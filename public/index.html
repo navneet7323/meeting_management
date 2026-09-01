@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Meeting Management</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #f0f2f5;
+            margin: 30px;
+            color: #333;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        .container {
+            display: flex;
+            gap: 40px;
+            max-width: 900px;
+            margin: 0 auto;
+            justify-content: center;
+        }
+
+        .slots-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 200px;
+        }
+
+        .slot-card {
+            border: 1px solid #7c83fd;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            background: #fff;
+            transition: 0.2s;
+        }
+
+        .slot-card.active {
+            border: 2px solid #0056b3;
+            background: #e8f0fe;
+        }
+
+        .slot-time {
+            color: #0000ff;
+            font-weight: bold;
+        }
+
+        .slot-avail {
+            color: green;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+
+        .booking-form {
+            background: #eef7f6;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #bce2db;
+            width: 300px;
+            height: fit-content;
+            transition: opacity 0.3s ease;
+        }
+
+        .booking-form.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #0066ff;
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .scheduled-section {
+            max-width: 1000px;
+            margin: 40px auto 0;
+            border-top: 1px solid #ccc;
+            padding-top: 20px;
+        }
+
+        .meetings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .meeting-card {
+            background: #eeeeee;
+            padding: 15px;
+            border-radius: 6px;
+            position: relative;
+        }
+
+        .cancel-btn {
+            background: #ff4d4d;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .instruction-text {
+            text-align: center;
+            font-size: 13px;
+            color: #d9534f;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <!-- Time Slots -->
+        <div class="slots-list" id="slotsList"></div>
+
+        <!-- Booking Form -->
+        <div class="booking-form disabled" id="bookingFormContainer">
+            <div id="formInstruction" class="instruction-text">⚠️ Please select a time slot first</div>
+            <form id="bookingForm">
+                <div class="form-group">
+                    <label for="name">Name:</label>
+                    <input type="text" id="name" required />
+                </div>
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" required />
+                </div>
+                <button type="submit">Book</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scheduled Meetings -->
+    <div class="scheduled-section">
+        <h2>Scheduled meetings</h2>
+        <div class="meetings-grid" id="meetingsGrid"></div>
+    </div>
+
+    <script>
+        let selectedSlotId = null;
+
+        async function loadSlots() {
+            const res = await fetch('/api/slots');
+            const slots = await res.json();
+            const slotsList = document.getElementById('slotsList');
+            slotsList.innerHTML = '';
+
+            slots.forEach(slot => {
+                const div = document.createElement('div');
+                div.className = `slot-card ${selectedSlotId === slot.id ? 'active' : ''}`;
+                div.onclick = () => {
+                    selectedSlotId = slot.id;
+
+                    // Enable the form once a slot is selected
+                    document.getElementById('bookingFormContainer').classList.remove('disabled');
+                    document.getElementById('formInstruction').style.display = 'none';
+
+                    loadSlots();
+                };
+                div.innerHTML = `
+          <div class="slot-time">${slot.time}</div>
+          <div class="slot-avail">${slot.available} Available</div>
+        `;
+                slotsList.appendChild(div);
+            });
+        }
+
+        async function loadMeetings() {
+            const res = await fetch('/api/meetings');
+            const meetings = await res.json();
+            const meetingsGrid = document.getElementById('meetingsGrid');
+            meetingsGrid.innerHTML = '';
+
+            meetings.forEach(meeting => {
+                const div = document.createElement('div');
+                div.className = 'meeting-card';
+                div.innerHTML = `
+          <h3>Hi ${meeting.name},</h3>
+          <p>Please join the meeting via this <a href="${meeting.meetLink}" target="_blank">${meeting.meetLink}</a> at ${meeting.Slot ? meeting.Slot.time : ''}.</p>
+          <button class="cancel-btn" onclick="cancelMeeting(${meeting.id})">Cancel</button>
+        `;
+                meetingsGrid.appendChild(div);
+            });
+        }
+
+        document.getElementById('bookingForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Strict fallback alert if somehow submitted without selection
+            if (!selectedSlotId) {
+                alert('Please select a time slot first!');
+                return;
+            }
+
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+
+            const res = await fetch('/api/book', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, slotId: selectedSlotId })
+            });
+
+            if (res.ok) {
+                document.getElementById('bookingForm').reset();
+                selectedSlotId = null;
+
+                // Re-lock the form until another slot is chosen
+                document.getElementById('bookingFormContainer').classList.add('disabled');
+                document.getElementById('formInstruction').style.display = 'block';
+
+                loadSlots();
+                loadMeetings();
+            } else {
+                const data = await res.json();
+                alert(data.error);
+            }
+        });
+
+        async function cancelMeeting(id) {
+            await fetch(`/api/meetings/${id}`, { method: 'DELETE' });
+            loadSlots();
+            loadMeetings();
+        }
+
+        // Initial Load
+        loadSlots();
+        loadMeetings();
+    </script>
+</body>
+
+</html>
